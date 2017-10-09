@@ -84,6 +84,9 @@ open class SKYChatConversationViewController: JSQMessagesViewController {
     public var messages: [SKYMessage] = []
     public var messagesFetchLimit: UInt = 25
     public var typingIndicatorShowDuration: TimeInterval = TimeInterval(5)
+    public var offsetYToLoadMore: CGFloat = CGFloat(40)
+    fileprivate var hasMoreMessageToFetch: Bool = false
+    fileprivate var isFetchingMessage: Bool = false
 
     public var messageChangeObserver: Any?
     public var typingIndicatorChangeObserver: Any?
@@ -137,6 +140,9 @@ extension SKYChatConversationViewController {
 
         self.incomingMessageBubbleColor = UIColor.lightGray
         self.outgoingMessageBubbleColor = UIColor.jsq_messageBubbleBlue()
+
+        // prevent scroll to bottom when load more
+        self.automaticallyScrollsToMostRecentMessage = false
     }
 
     override open func viewWillAppear(_ animated: Bool) {
@@ -432,6 +438,23 @@ extension SKYChatConversationViewController {
                                                    date: date,
                                                    error: err)
     }
+
+    open override func scrollViewDidScrollToTop(_ scrollView: UIScrollView) {
+        self.loadMoreMessage()
+    }
+
+    open override func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        if scrollView.contentOffset.y < self.offsetYToLoadMore {
+            self.loadMoreMessage()
+        }
+    }
+
+    open func loadMoreMessage() {
+        if !self.isFetchingMessage && self.hasMoreMessageToFetch {
+            let firstMessage = self.messages[0]
+            self.fetchMessages(before: firstMessage.creationDate())
+        }
+    }
 }
 
 // MARK: - Subscription
@@ -601,6 +624,7 @@ extension SKYChatConversationViewController {
         }
 
         let chatExt = self.skygear.chatExtension
+        self.isFetchingMessage = true
 
         self.delegate?.startFetchingMessages?(self)
         chatExt?.fetchMessages(
@@ -609,6 +633,8 @@ extension SKYChatConversationViewController {
             beforeTime: before,
                  order: nil,
             completion: { (result, error) in
+                self.isFetchingMessage = false
+
                 guard error == nil else {
                     print("Failed to fetch messages: \(error?.localizedDescription ?? "")")
                     self.delegate?.conversationViewController?(
@@ -640,10 +666,13 @@ extension SKYChatConversationViewController {
                 var newMessages = Array(msgs.reversed())
                 newMessages.append(contentsOf: self.messages)
                 self.messages = newMessages
+                self.hasMoreMessageToFetch = msgs.count > 0
 
                 self.delegate?.conversationViewController?(self, didFetchedMessages: msgs)
 
                 self.finishReceivingMessage()
+                self.scroll(to: IndexPath(row: msgs.count, section: 0), animated: false)
+                self.collectionView.flashScrollIndicators()
         })
     }
 
