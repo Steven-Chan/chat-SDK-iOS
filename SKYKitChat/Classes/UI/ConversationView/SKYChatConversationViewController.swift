@@ -38,6 +38,10 @@ import JSQMessagesViewController
         _ controller: SKYChatConversationViewController,
         alertControllerForAccessoryButton button: UIButton) -> UIAlertController
 
+    @objc optional func conversationViewController(
+        _ controller: SKYChatConversationViewController,
+        shouldShowSenderNameAt indexPath: IndexPath) -> Bool
+
     /**
      * Hooks on send message flow
      */
@@ -285,6 +289,54 @@ extension SKYChatConversationViewController {
         heightForCellBottomLabelAt indexPath: IndexPath!
     ) -> CGFloat {
         return CGFloat(14)
+    }
+
+    open override func collectionView(
+        _ collectionView: JSQMessagesCollectionView!,
+        attributedTextForMessageBubbleTopLabelAt indexPath: IndexPath!
+    ) -> NSAttributedString! {
+        let msg = self.messages[indexPath.row]
+        var senderName: String = ""
+        if let user = self.getSender(forMessage: msg),
+            let userName = user.object(forKey: "name") as? String {
+            senderName = userName
+        }
+
+        return NSAttributedString(string: senderName)
+    }
+
+    open override func collectionView(
+        _ collectionView: JSQMessagesCollectionView!,
+        layout collectionViewLayout: JSQMessagesCollectionViewFlowLayout!,
+        heightForMessageBubbleTopLabelAt indexPath: IndexPath!
+    ) -> CGFloat {
+        var shouldShow: Bool
+        if let s
+            = self.delegate?.conversationViewController?(self, shouldShowSenderNameAt: indexPath) {
+            shouldShow = s
+        } else {
+            // default behaviour
+            // skip when it is "me" or only two members or sender name is the same as previous one
+            let msg = self.messages[indexPath.row]
+            if msg.creatorUserRecordID() == self.senderId || self.participants.count < 3 {
+                shouldShow = false
+            } else if indexPath.row == 0 {
+                shouldShow = true
+            } else {
+                let thisString = self.collectionView(
+                    collectionView,
+                    attributedTextForMessageBubbleTopLabelAt: indexPath
+                )
+                let lastIndexPath = IndexPath(row: indexPath.row - 1, section: indexPath.section)
+                let lastString = self.collectionView(
+                    collectionView,
+                    attributedTextForMessageBubbleTopLabelAt: lastIndexPath
+                )
+                shouldShow = thisString?.string != lastString?.string
+            }
+        }
+
+        return shouldShow ? CGFloat(14) : CGFloat(0)
     }
 
     open override func collectionView(
